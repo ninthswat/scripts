@@ -5,7 +5,7 @@ SMTP_SERVER="post.hostflyby.net"
 SMTP_PORT="2525"
 SMTP_USER="hfl/dn"
 SMTP_PASS="s6tGiMzCee745dKO67zgAMT9"
-SMTP_FROM="support@hostfly.by"
+SMTP_FROM="HostFly. Мониторинг <support@hostfly.by>"
 
 # Проверка аргументов
 if [ "$#" -ne 1 ]; then
@@ -40,10 +40,10 @@ check_dependencies() {
     if ! command -v sendEmail &>/dev/null; then
         echo "Устанавливаю sendEmail для SMTP..."
         if command -v apt &>/dev/null; then
-            sudo apt install -y sendemail
+            sudo apt install -y sendemail libio-socket-ssl-perl libnet-ssleay-perl
         elif command -v yum &>/dev/null; then
             check_centos7_repos  # Добавляем проверку перед установкой через yum
-            sudo yum install -y sendEmail
+            sudo yum install -y sendEmail perl-IO-Socket-SSL perl-Net-SSLeay
         else
             echo "Ошибка: не найден apt или yum для установки sendEmail" >&2
             exit 1
@@ -55,9 +55,9 @@ send_email() {
     local priority=$1
     local subject=$2
     local message=$3
-    local russian_date=$(date "+%d.%m.%Y %H:%M:%S")
     
-    local full_message=$(echo -e "Хост: $HOSTNAME\nДата: $(date)\nПриоритет: $priority\n\n$message\n\nДополнительная информация:\n$(df -h /)\n\nТоп 10 самых больших каталогов в корне:\n$(du -Sh / 2>/dev/null | sort -rh | head -n 10)")
+    local russian_date=$(date "+%d.%m.%Y %H:%M:%S")
+    local full_message=$(echo -e "Хост: $HOSTNAME\nДата: $russian_date\nПриоритет: $priority\n\n$message\n\nДополнительная информация:\n$(df -h /)\n\nТоп 10 самых больших каталогов в корне:\n$(du -Sh / 2>/dev/null | sort -rh | head -n 10)")
     
     if sendEmail -f "$SMTP_FROM" \
                 -t "$EMAIL" \
