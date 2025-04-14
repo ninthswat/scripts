@@ -18,8 +18,8 @@ while true; do
   fi
 done
 
-# Установка зависимостей
-echo -n "Устанавливаю зависимости..."
+# Установка только sendEmail (без MySQL)
+echo -n "Устанавливаю зависимости для отправки почты..."
 if command -v apt &>/dev/null; then
   apt-get update >/dev/null && \
   apt-get install -y sendemail libio-socket-ssl-perl libnet-ssleay-perl >/dev/null
@@ -54,6 +54,6 @@ touch /var/log/mysql_monitor.log
 chmod 644 /var/log/mysql_monitor.log
 
 echo " [OK]"
-echo "Установка завершена!"
+echo "Установка завершена успешно!"
+echo "Мониторинг будет проверять доступность MySQL без его установки"
 echo "Лог-файл: /var/log/mysql_monitor.log"
-echo "Проверка: tail -f /var/log/mysql_monitor.log"
