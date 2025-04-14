@@ -6,36 +6,43 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# Если запущен через pipe и нет аргументов - сообщить о правильном использовании
-if [ -t 0 ] && [ $# -eq 0 ]; then
-    echo "Использование (интерактивный режим):"
-    echo "  curl -sSL https://.../install_disk_monitor.sh | sudo bash -s -- --interactive"
-    echo ""
-    echo "Использование (с указанием email):"
-    echo "  curl -sSL https://.../install_disk_monitor.sh | sudo bash -s -- \"ваш@email.com\""
-    exit 1
-fi
-
-# Обработка аргументов
+# Проверка терминала (интерактивный режим)
 if [[ "$1" == "--interactive" ]]; then
-    # Интерактивный ввод
-    while true; do
-        read -p "Введите email для уведомлений (можно несколько через запятую): " emails
-        if [[ "$emails" =~ @ ]]; then
-            break
-        else
-            echo "Ошибка: email должен содержать @" >&2
-        fi
-    done
+    if [ -t 0 ]; then
+        # Режим реального терминала
+        while true; do
+            read -p "Введите email для уведомлений (можно несколько через запятую): " emails
+            if [[ "$emails" =~ @ ]]; then
+                break
+            else
+                echo "Ошибка: email должен содержать @" >&2
+            fi
+        done
+    else
+        # Режим pipe - перенаправляем ввод с /dev/tty
+        exec < /dev/tty
+        while true; do
+            read -p "Введите email для уведомлений (можно несколько через запятую): " emails
+            if [[ "$emails" =~ @ ]]; then
+                break
+            else
+                echo "Ошибка: email должен содержать @" >&2
+            fi
+        done
+    fi
 elif [ $# -ge 1 ]; then
-    # Email передан как аргумент
     emails="$1"
     if ! [[ "$emails" =~ @ ]]; then
         echo "Ошибка: email должен содержать @" >&2
         exit 1
     fi
 else
-    echo "Ошибка: требуется указать email" >&2
+    echo "Использование:"
+    echo "  Автоматический режим: curl ... | sudo bash -s -- \"ваш@email.com\""
+    echo "  Интерактивный режим: curl ... | sudo bash -s -- --interactive"
+    echo ""
+    echo "Для интерактивного режима лучше использовать:"
+    echo "  sudo bash <(curl -sSL https://.../install_disk_monitor.sh) --interactive"
     exit 1
 fi
 
