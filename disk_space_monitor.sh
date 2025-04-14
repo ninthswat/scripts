@@ -1,83 +1,109 @@
 #!/bin/bash
 
-# Конфигурация
+# Конфигурация SMTP
 SMTP_SERVER="post.hostflyby.net"
 SMTP_PORT="2525"
 SMTP_USER="hfl/dn"
 SMTP_PASS="s6tGiMzCee745dKO67zgAMT9"
 SMTP_FROM="support@hostfly.by"
-SMTP_TEST_EMAIL="support@hostfly.by"
-LOG_FILE="/var/log/disk_monitor.log"
+
+# Проверка аргументов
+if [ "$#" -ne 1 ]; then
+    echo "Использование: $0 <email_получателя>"
+    echo "Пример: $0 admin@example.com"
+    exit 1
+fi
+
+EMAIL="$1"
+SCRIPT_PATH="/usr/local/bin/disk_space_monitor.sh"
+CRON_JOB="0 8,20 * * * $SCRIPT_PATH $EMAIL"
 HOSTNAME=$(hostname)
+LANG=ru_RU.UTF-8
+LC_ALL=ru_RU.UTF-8
 
-# Инициализация лога
-exec >> "$LOG_FILE" 2>&1
-echo -e "\n[$(date '+%d.%m.%Y %H:%M:%S')] Запуск проверки"
-
-# Проверка SMTP
-check_smtp() {
-  echo "[$(date '+%d.%m.%Y %H:%M:%S')] Проверка SMTP..."
-  if sendEmail -f "$SMTP_FROM" \
-              -t "$SMTP_TEST_EMAIL" \
-              -u "Тест SMTP с $HOSTNAME" \
-              -m "Проверка подключения" \
-              -s "$SMTP_SERVER:$SMTP_PORT" \
-              -xu "$SMTP_USER" \
-              -xp "$SMTP_PASS" \
-              -o tls=no \
-              -o timeout=10 \
-              -o message-charset=UTF-8; then
-    echo "[$(date '+%d.%m.%Y %H:%M:%S')] ✔ SMTP доступен"
-    return 0
-  else
-    echo "[$(date '+%d.%m.%Y %H:%M:%S')] ✖ Ошибка SMTP"
-    return 1
-  fi
+# Проверка зависимостей
+check_dependencies() {
+    if ! command -v sendEmail &>/dev/null; then
+        echo "Устанавливаю sendEmail для SMTP..."
+        if command -v apt &>/dev/null; then
+            sudo apt install -y sendemail libio-socket-ssl-perl libnet-ssleay-perl
+        elif command -v yum &>/dev/null; then
+            sudo yum install -y sendEmail perl-IO-Socket-SSL perl-Net-SSLeay
+        else
+            echo "Ошибка: не найден apt или yum для установки sendEmail" >&2
+            exit 1
+        fi
+    fi
 }
 
-# Отправка уведомления
-send_alert() {
-  local priority=$1
-  local subject=$2
-  local message=$3
-
-  local full_message=$(echo -e "
-🖥️ Сервер: $HOSTNAME
-📅 Дата: $(date '+%d.%m.%Y %H:%M:%S')
-🚨 Уровень: $priority
-
-$message
-
-💾 Состояние дисков:
-$(df -h /)
-
-📂 Топ-10 каталогов:
-$(du -Sh / 2>/dev/null | sort -rh | head -n 10)
-")
-
-  echo "[$(date '+%d.%m.%Y %H:%M:%S')] Отправка: $subject"
-  sendEmail -f "$SMTP_FROM" \
-            -t "$EMAIL" \
-            -u "🖥️ $HOSTNAME: $subject" \
-            -m "$full_message" \
-            -s "$SMTP_SERVER:$SMTP_PORT" \
-            -xu "$SMTP_USER" \
-            -xp "$SMTP_PASS" \
-            -o tls=no \
-            -o timeout=10 \
-            -o message-charset=UTF-8
+send_email() {
+    local priority=$1
+    local subject=$2
+    local message=$3
+    
+    local full_message=$(echo -e "Хост: $HOSTNAME\nДата: $(date)\nПриоритет: $priority\n\n$message\n\nДополнительная информация:\n$(df -h /)\n\nТоп 10 самых больших каталогов в корне:\n$(du -Sh / 2>/dev/null | sort -rh | head -n 10)")
+    
+    if sendEmail -f "$SMTP_FROM" \
+                -t "$EMAIL" \
+                -u "$subject" \
+                -m "$full_message" \
+                -s "$SMTP_SERVER:$SMTP_PORT" \
+                -xu "$SMTP_USER" \
+                -xp "$SMTP_PASS" \
+                -o tls=no \
+                -o message-content-type=text/plain \
+                -o message-charset=UTF-8; then
+        echo "Уведомление отправлено на $EMAIL"
+    else
+        echo "Ошибка отправки письма!" >&2
+        exit 1
+    fi
 }
 
-# Проверка диска
-check_space() {
-  local output=$(df -h / | awk 'NR==2 {print $5 " " $6}')
-  local used_percent=$(echo "$output" | awk '{print $1}' | cut -d'%' -f1)
-  local partition=$(echo "$output" | awk '{print $2}')
-  
-  if [ "$used_percent" -ge 95 ]; then
-    send_alert "‼️ КРИТИЧЕСКИЙ" \
-              "Диск заполнен на $used_percent%" \
-              "Раздел $partition: ${used_percent}% занято"
-  elif [ "$used_percent" -ge 90 ]; then
-    send_alert "⚠️ ВНИМАНИЕ" \
-              "
+check_disk_space() {
+    # Получаем информацию только о корневом разделе
+    output=$(df -h / | awk 'NR==2 {print $5 " " $6}')
+    used_percent=$(echo "$output" | awk '{print $1}' | cut -d'%' -f1)
+    partition=$(echo "$output" | awk '{print $2}')
+    
+    if [ "$used_percent" -ge 95 ]; then
+        send_email "Критический" \
+                  "CRITICAL: Заполнение корневого раздела ($used_percent%)" \
+                  "Корневой раздел $partition заполнен на $used_percent%.\nТребуется немедленное вмешательство!"
+    elif [ "$used_percent" -ge 90 ]; then
+        send_email "Высокий" \
+                  "WARNING: Заполнение корневого раздела ($used_percent%)" \
+                  "Корневой раздел $partition заполнен на $used_percent%.\nРекомендуется очистить место в ближайшее время."
+    fi
+}
+
+install_cron_job() {
+    crontab -l | grep -v "$(basename "$SCRIPT_PATH")" | crontab -
+    (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
+    
+    if crontab -l | grep -q "$(basename "$SCRIPT_PATH")"; then
+        echo "Задание cron успешно установлено:"
+        echo "Проверка будет выполняться в 08:00 и 20:00"
+    else
+        echo "Ошибка при добавлении задания в cron!" >&2
+        exit 1
+    fi
+}
+
+# Установочная часть
+if [ "$0" = "$BASH_SOURCE" ]; then
+    echo "Установка монитора дискового пространства"
+    echo "Получатель уведомлений: $EMAIL"
+    
+    check_dependencies
+    
+    echo "Копируем скрипт в $SCRIPT_PATH"
+    cp -f "$0" "$SCRIPT_PATH"
+    chmod +x "$SCRIPT_PATH"
+    
+    install_cron_job
+    
+    echo "Установка завершена. Для теста запустите: $SCRIPT_PATH $EMAIL"
+fi
+
+[ "$0" = "$BASH_SOURCE" ] && [ "$1" != "--install" ] && check_disk_space
