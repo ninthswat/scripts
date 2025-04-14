@@ -5,7 +5,7 @@ SMTP_SERVER="post.hostflyby.net"
 SMTP_PORT="2525"
 SMTP_USER="hfl/dn"
 SMTP_PASS="s6tGiMzCee745dKO67zgAMT9"
-SMTP_FROM="support@hostfly.by"  # Обновлённый адрес отправителя
+SMTP_FROM="diskwatch@hostfly.by"
 
 # Проверка аргументов
 if [ "$#" -ne 1 ]; then
@@ -41,7 +41,7 @@ send_email() {
     local subject=$2
     local message=$3
     
-    local full_message=$(echo -e "Хост: $HOSTNAME\nДата: $(date)\nПриоритет: $priority\n\n$message\n\nДополнительная информация:\n$(df -h)\n\nТоп 10 самых больших каталогов:\n$(du -Sh / 2>/dev/null | sort -rh | head -n 10)")
+    local full_message=$(echo -e "Хост: $HOSTNAME\nДата: $(date)\nПриоритет: $priority\n\n$message\n\nДополнительная информация:\n$(df -h /)\n\nТоп 10 самых больших каталогов в корне:\n$(du -Sh / 2>/dev/null | sort -rh | head -n 10)")
     
     if sendEmail -f "$SMTP_FROM" \
                 -t "$EMAIL" \
@@ -61,20 +61,20 @@ send_email() {
 }
 
 check_disk_space() {
-    df -h | grep -vE '^Filesystem|tmpfs|cdrom|udev' | awk '{print $5 " " $6}' | while read -r output; do
-        used_percent=$(echo "$output" | awk '{print $1}' | cut -d'%' -f1)
-        partition=$(echo "$output" | awk '{print $2}')
-        
-        if [ "$used_percent" -ge 95 ]; then
-            send_email "Критический" \
-                      "CRITICAL: Заполнение диска ($used_percent%) на $partition" \
-                      "Раздел $partition заполнен на $used_percent%.\nТребуется немедленное вмешательство!"
-        elif [ "$used_percent" -ge 90 ]; then
-            send_email "Высокий" \
-                      "WARNING: Заполнение диска ($used_percent%) на $partition" \
-                      "Раздел $partition заполнен на $used_percent%.\nРекомендуется очистить место в ближайшее время."
-        fi
-    done
+    # Получаем информацию только о корневом разделе
+    output=$(df -h / | awk 'NR==2 {print $5 " " $6}')
+    used_percent=$(echo "$output" | awk '{print $1}' | cut -d'%' -f1)
+    partition=$(echo "$output" | awk '{print $2}')
+    
+    if [ "$used_percent" -ge 95 ]; then
+        send_email "Критический" \
+                  "CRITICAL: Заполнение корневого раздела ($used_percent%)" \
+                  "Корневой раздел $partition заполнен на $used_percent%.\nТребуется немедленное вмешательство!"
+    elif [ "$used_percent" -ge 90 ]; then
+        send_email "Высокий" \
+                  "WARNING: Заполнение корневого раздела ($used_percent%)" \
+                  "Корневой раздел $partition заполнен на $used_percent%.\nРекомендуется очистить место в ближайшее время."
+    fi
 }
 
 install_cron_job() {
