@@ -22,9 +22,9 @@ done
 echo -n "Устанавливаю зависимости..."
 if command -v apt &>/dev/null; then
   apt-get update >/dev/null && \
-  apt-get install -y sendemail libio-socket-ssl-perl libnet-ssleay-perl mysql-client >/dev/null
+  apt-get install -y sendemail libio-socket-ssl-perl libnet-ssleay-perl >/dev/null
 elif command -v yum &>/dev/null; then
-  yum install -y sendEmail perl-IO-Socket-SSL perl-Net-SSLeay mysql >/dev/null
+  yum install -y sendEmail perl-IO-Socket-SSL perl-Net-SSLeay >/dev/null
 else
   echo " [ОШИБКА] Не найден apt или yum" >&2
   exit 1
