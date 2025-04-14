@@ -68,11 +68,11 @@ check_disk_space() {
     
     if [ "$used_percent" -ge 95 ]; then
         send_email "Критический" \
-                  "CRITICAL: Заполнение корневого раздела ($used_percent%)" \
+                  "КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ: Заполнение корневого раздела ($used_percent%)" \
                   "Корневой раздел $partition заполнен на $used_percent%.\nТребуется немедленное вмешательство!"
     elif [ "$used_percent" -ge 90 ]; then
         send_email "Высокий" \
-                  "WARNING: Заполнение корневого раздела ($used_percent%)" \
+                  "ПРЕДУПРЕЖДЕНИЕ: Заполнение корневого раздела ($used_percent%)" \
                   "Корневой раздел $partition заполнен на $used_percent%.\nРекомендуется очистить место в ближайшее время."
     fi
 }
