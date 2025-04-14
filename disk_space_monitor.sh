@@ -21,6 +21,20 @@ HOSTNAME=$(hostname)
 LANG=ru_RU.UTF-8
 LC_ALL=ru_RU.UTF-8
 
+# Проверка и настройка CentOS 7 репозиториев
+check_centos7_repos() {
+    if [ -f /etc/centos-release ]; then
+        CENTOS_VERSION=$(grep -oP '(?<=release )\d' /etc/centos-release)
+        if [ "$CENTOS_VERSION" -eq 7 ]; then
+            echo "Обнаружен CentOS 7, настраиваю репозитории на vault.centos.org..."
+            sudo sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+            sudo sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+            echo "Очищаю кеш yum..."
+            sudo yum clean all
+        fi
+    fi
+}
+
 # Проверка зависимостей
 check_dependencies() {
     if ! command -v sendEmail &>/dev/null; then
@@ -28,6 +42,7 @@ check_dependencies() {
         if command -v apt &>/dev/null; then
             sudo apt install -y sendemail libio-socket-ssl-perl libnet-ssleay-perl
         elif command -v yum &>/dev/null; then
+            check_centos7_repos  # Добавляем проверку перед установкой через yum
             sudo yum install -y sendEmail perl-IO-Socket-SSL perl-Net-SSLeay
         else
             echo "Ошибка: не найден apt или yum для установки sendEmail" >&2
@@ -40,6 +55,7 @@ send_email() {
     local priority=$1
     local subject=$2
     local message=$3
+    local russian_date=$(date "+%d.%m.%Y %H:%M:%S")
     
     local full_message=$(echo -e "Хост: $HOSTNAME\nДата: $(date)\nПриоритет: $priority\n\n$message\n\nДополнительная информация:\n$(df -h /)\n\nТоп 10 самых больших каталогов в корне:\n$(du -Sh / 2>/dev/null | sort -rh | head -n 10)")
     
