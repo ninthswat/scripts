@@ -5,7 +5,7 @@ SMTP_SERVER="post.hostflyby.net"
 SMTP_PORT="2525"
 SMTP_USER="hfl/dn"
 SMTP_PASS="s6tGiMzCee745dKO67zgAMT9"
-SMTP_FROM="diskwatch@hostfly.by"
+SMTP_FROM="support@hostfly.by"
 
 # Проверка аргументов
 if [ "$#" -ne 1 ]; then
