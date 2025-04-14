@@ -40,10 +40,10 @@ check_dependencies() {
     if ! command -v sendEmail &>/dev/null; then
         echo "Устанавливаю sendEmail для SMTP..."
         if command -v apt &>/dev/null; then
-            sudo apt install -y sendemail libio-socket-ssl-perl libnet-ssleay-perl
+            sudo apt install -y sendemail
         elif command -v yum &>/dev/null; then
             check_centos7_repos  # Добавляем проверку перед установкой через yum
-            sudo yum install -y sendEmail perl-IO-Socket-SSL perl-Net-SSLeay
+            sudo yum install -y sendEmail
         else
             echo "Ошибка: не найден apt или yum для установки sendEmail" >&2
             exit 1
