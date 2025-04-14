@@ -1,6 +1,11 @@
 #!/bin/bash
 
-# Скрипт для мониторинга свободного места на диске с исправленной установкой в cron
+# Конфигурация SMTP
+SMTP_SERVER="post.hostflyby.net"
+SMTP_PORT="2525"
+SMTP_USER="hfl/dn"
+SMTP_PASS="s6tGiMzCee745dKO67zgAMT9"
+SMTP_FROM="diskwatch@hostfly.by"  # Обновлённый адрес отправителя
 
 # Проверка аргументов
 if [ "$#" -ne 1 ]; then
@@ -16,14 +21,18 @@ HOSTNAME=$(hostname)
 LANG=ru_RU.UTF-8
 LC_ALL=ru_RU.UTF-8
 
-# Функции для работы с почтой
-determine_mail_method() {
-    if command -v mail >/dev/null 2>&1; then
-        echo "mail"
-    elif command -v sendmail >/dev/null 2>&1; then
-        echo "sendmail"
-    else
-        echo "none"
+# Проверка зависимостей
+check_dependencies() {
+    if ! command -v sendEmail &>/dev/null; then
+        echo "Устанавливаю sendEmail для SMTP..."
+        if command -v apt &>/dev/null; then
+            sudo apt install -y sendemail libio-socket-ssl-perl libnet-ssleay-perl
+        elif command -v yum &>/dev/null; then
+            sudo yum install -y sendEmail perl-IO-Socket-SSL perl-Net-SSLeay
+        else
+            echo "Ошибка: не найден apt или yum для установки sendEmail" >&2
+            exit 1
+        fi
     fi
 }
 
@@ -31,24 +40,22 @@ send_email() {
     local priority=$1
     local subject=$2
     local message=$3
-    local mail_method=$(determine_mail_method)
     
     local full_message=$(echo -e "Хост: $HOSTNAME\nДата: $(date)\nПриоритет: $priority\n\n$message\n\nДополнительная информация:\n$(df -h)\n\nТоп 10 самых больших каталогов:\n$(du -Sh / 2>/dev/null | sort -rh | head -n 10)")
     
-    if [ "$mail_method" == "mail" ]; then
-        echo -e "$full_message" | mail -s "$(echo -e "$subject\nContent-Type: text/plain; charset=UTF-8")" "$EMAIL"
-    elif [ "$mail_method" == "sendmail" ]; then
-        (
-            echo "From: disk_monitor@$HOSTNAME"
-            echo "To: $EMAIL"
-            echo "Subject: $subject"
-            echo "Content-Type: text/plain; charset=UTF-8"
-            echo "X-Priority: $([ "$priority" == "Критический" ] && echo "1" || echo "3")"
-            echo ""
-            echo -e "$full_message"
-        ) | sendmail -f "disk_monitor@$HOSTNAME" "$EMAIL"
+    if sendEmail -f "$SMTP_FROM" \
+                -t "$EMAIL" \
+                -u "$subject" \
+                -m "$full_message" \
+                -s "$SMTP_SERVER:$SMTP_PORT" \
+                -xu "$SMTP_USER" \
+                -xp "$SMTP_PASS" \
+                -o tls=no \
+                -o message-content-type=text/plain \
+                -o message-charset=UTF-8; then
+        echo "Уведомление отправлено на $EMAIL"
     else
-        echo "Не удалось отправить уведомление: не найден ни mail, ни sendmail" >&2
+        echo "Ошибка отправки письма!" >&2
         exit 1
     fi
 }
@@ -71,10 +78,7 @@ check_disk_space() {
 }
 
 install_cron_job() {
-    # Удаляем старые записи этого скрипта из cron
     crontab -l | grep -v "$(basename "$SCRIPT_PATH")" | crontab -
-    
-    # Добавляем новую запись
     (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
     
     if crontab -l | grep -q "$(basename "$SCRIPT_PATH")"; then
@@ -91,16 +95,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     echo "Установка монитора дискового пространства"
     echo "Получатель уведомлений: $EMAIL"
     
-    # Проверка почтовых утилит
-    mail_method=$(determine_mail_method)
-    if [ "$mail_method" == "none" ]; then
-        echo "Требуется установка почтовых утилит:" >&2
-        echo "Debian/Ubuntu: sudo apt install mailutils" >&2
-        echo "CentOS/RHEL: sudo yum install mailx postfix" >&2
-        exit 1
-    fi
+    check_dependencies
     
-    # Установка скрипта
     echo "Копируем скрипт в $SCRIPT_PATH"
     cp -f "$0" "$SCRIPT_PATH"
     chmod +x "$SCRIPT_PATH"
@@ -110,5 +106,4 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     echo "Установка завершена. Для теста запустите: $SCRIPT_PATH $EMAIL"
 fi
 
-# Основная логика
 [ "$0" = "$BASH_SOURCE" ] && [ "$1" != "--install" ] && check_disk_space
