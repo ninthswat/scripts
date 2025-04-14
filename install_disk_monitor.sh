@@ -10,44 +10,61 @@ fi
 LOG_FILE="/var/log/disk_monitor.log"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1  # Живой вывод + запись в лог
+
+clear
+echo "=== Установка монитора дискового пространства ==="
+echo "Логирование: $LOG_FILE"
+echo "-----------------------------------------------"
 
 # Запрос email
-read -p "Введите email для уведомлений: " EMAIL
-if [[ ! "$EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-  echo "[$(date '+%d.%m.%Y %H:%M:%S')] Ошибка: некорректный email" >> "$LOG_FILE"
-  echo "Ошибка: некорректный email"
-  exit 1
-fi
+while true; do
+  read -p "Введите email для уведомлений: " EMAIL
+  if [[ "$EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+    break
+  else
+    echo "Ошибка: введите корректный email (например, user@example.com)"
+  fi
+done
 
 # Установка зависимостей
-echo "Установка sendEmail..." | tee -a "$LOG_FILE"
+echo -e "\n[1/3] Установка sendEmail..."
 if command -v apt &>/dev/null; then
-  apt-get install -y sendemail >> "$LOG_FILE" 2>&1 || {
-    echo "[$(date '+%d.%m.%Y %H:%M:%S')] Ошибка установки sendEmail" >> "$LOG_FILE"
+  apt-get update
+  apt-get install -y sendemail || {
+    echo "ОШИБКА: не удалось установить sendEmail"
     exit 1
   }
 elif command -v yum &>/dev/null; then
-  yum install -y sendEmail >> "$LOG_FILE" 2>&1 || {
-    echo "[$(date '+%d.%m.%Y %H:%M:%S')] Ошибка установки sendEmail" >> "$LOG_FILE"
+  yum install -y sendEmail || {
+    echo "ОШИБКА: не удалось установить sendEmail"
     exit 1
   }
+else
+  echo "ОШИБКА: система не поддерживается (требуется apt или yum)"
+  exit 1
 fi
+echo "✔ sendEmail установлен"
 
-# Установка скрипта
+# Загрузка скрипта
+echo -e "\n[2/3] Загрузка монитора..."
 SCRIPT_URL="https://raw.githubusercontent.com/ninthswat/scripts/main/disk_space_monitor.sh"
 SCRIPT_PATH="/usr/local/bin/disk_space_monitor.sh"
 
-echo "Загрузка скрипта..." | tee -a "$LOG_FILE"
-curl -sL "$SCRIPT_URL" -o "$SCRIPT_PATH" || {
-  echo "[$(date '+%d.%m.%Y %H:%M:%S')] Ошибка загрузки скрипта" >> "$LOG_FILE"
+if ! curl -sL "$SCRIPT_URL" -o "$SCRIPT_PATH"; then
+  echo "ОШИБКА: не удалось загрузить скрипт"
   exit 1
-}
+fi
 chmod +x "$SCRIPT_PATH"
+echo "✔ Скрипт загружен в $SCRIPT_PATH"
 
 # Настройка cron
+echo -e "\n[3/3] Настройка расписания..."
 CRON_JOB="0 8,20 * * * $SCRIPT_PATH $EMAIL"
 (crontab -l 2>/dev/null | grep -v "disk_space_monitor.sh"; echo "$CRON_JOB") | crontab -
 
-echo "[$(date '+%d.%m.%Y %H:%M:%S')] Установка завершена для $EMAIL" >> "$LOG_FILE"
-echo "Мониторинг установлен! Проверка в 08:00 и 20:00"
-echo "Логи: tail -f $LOG_FILE"
+echo -e "\n✔ Установка завершена!"
+echo "-----------------------------------------------"
+echo "Мониторинг будет запускаться в 08:00 и 20:00"
+echo "Проверить логи: tail -f $LOG_FILE"
+echo "Тест: $SCRIPT_PATH $EMAIL"
