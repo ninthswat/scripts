@@ -18,7 +18,7 @@ done
 
 # Скачивание и установка основного скрипта
 echo "Устанавливаю монитор дискового пространства..."
-wget -qO /usr/local/bin/disk_space_monitor.sh https://raw.githubusercontent.com/username/repo/main/disk_space_monitor.sh
+wget -qO /usr/local/bin/disk_space_monitor.sh https://raw.githubusercontent.com/ninthswat/scripts/refs/heads/main/disk_space_monitor.sh
 chmod +x /usr/local/bin/disk_space_monitor.sh
 
 # Первый запуск с email
