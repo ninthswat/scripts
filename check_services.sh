@@ -7,7 +7,7 @@ SMTP_USER="hfl/dn"
 SMTP_PASS="s6tGiMzCee745dKO67zgAMT9"
 SMTP_FROM="support@hostfly.by"
 RECIPIENT_EMAIL="ninthswat@gmail.com"  # Автоматически заменяется при установке
-LOG_FILE="/var/log/mysql_monitor.log"
+LOG_FILE="/var/log/services_monitor.log"
 HOSTNAME=$(hostname)
 
 # Функция отправки email (русские темы)
