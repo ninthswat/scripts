@@ -1,0 +1,59 @@
+#!/bin/bash
+clear
+echo "=== Установка монитора ==="
+
+# Проверка root-прав
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Требуются права root! Используйте sudo." >&2
+  exit 1
+fi
+
+# Запрос email с валидацией
+while true; do
+  read -p "Введите email для уведомлений: " EMAIL
+  if [[ "$EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+    break
+  else
+    echo "Ошибка: введите корректный email (например, user@example.com)"
+  fi
+done
+
+# Установка только sendEmail (без MySQL / Apache)
+echo -n "Устанавливаю зависимости для отправки почты..."
+if command -v apt &>/dev/null; then
+  apt-get update >/dev/null && \
+  apt-get install -y sendemail libio-socket-ssl-perl libnet-ssleay-perl >/dev/null
+elif command -v yum &>/dev/null; then
+  yum install -y sendEmail perl-IO-Socket-SSL perl-Net-SSLeay >/dev/null
+else
+  echo " [ОШИБКА] Не найден apt или yum" >&2
+  exit 1
+fi
+echo " [OK]"
+
+# Скачивание и настройка скрипта
+echo -n "Настраиваю мониторинг..."
+SCRIPT_URL="https://raw.githubusercontent.com/ninthswat/scripts/main/check_services.sh"
+TMP_SCRIPT="/tmp/check_services_$$.sh"
+
+curl -sL "$SCRIPT_URL" -o "$TMP_SCRIPT" || {
+  echo " [ОШИБКА] Не удалось скачать скрипт" >&2
+  exit 1
+}
+
+# Подстановка email и перемещение
+sed -i "s/^RECIPIENT_EMAIL=.*/RECIPIENT_EMAIL=\"$EMAIL\"/" "$TMP_SCRIPT"
+install -m 755 "$TMP_SCRIPT" /usr/local/bin/check_services.sh
+rm -f "$TMP_SCRIPT"
+
+# Настройка cron
+(crontab -l 2>/dev/null | grep -v "check_services.sh"; echo "* * * * * /usr/local/bin/check_services.sh") | crontab -
+
+# Создание лог-файла
+touch /var/log/services_monitor.log
+chmod 644 /var/log/services_monitor.log
+
+echo " [OK]"
+echo "Установка завершена успешно!"
+echo "Мониторинг будет проверять доступность MYSQL и Apache без его установки"
+echo "Лог-файл: /var/log/services_monitor.log"
