@@ -88,7 +88,7 @@ monitor_databases() {
         local header="ВНИМАНИЕ: Обнаружены превышения по объёму MySQL-баз данных на сервере $hostname\n"
         local table_header="\n==============================================\nРазмер     | База данных\n------------|--------------------------\n"
         local formatted=$(echo -e "$raw_output" | awk -F '\t' '{ printf "%-11s| %s\n", $1, $2 }')
-        local footer="==============================================\n"
+        local footer="\n==============================================\n"
         footer+="\n⚠️ Согласно пункту 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\n"
         footer+="📌 Необходимо определить владельцев баз и уведомить их о нарушении."
 
@@ -106,15 +106,15 @@ monitor_databases() {
 monitor_databases
 EOF
 
-# Подстановка email в шаблон
+# Подстановка email
 sed -i "s|{{EMAIL}}|$EMAIL|" "$SCRIPT_PATH"
 
-# Установка прав
+# Права
 chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
 
-# Установка cron
+# Установка в cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
