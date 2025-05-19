@@ -63,13 +63,14 @@ run_audit() {
 
     log "Начат аудит квот"
 
-    # Список пользователей без лимита по квоте
-    while IFS= read -r user; do
-        limit=$(grep "^$user:" /etc/quota.conf | awk -F: '{print $2}')
-        if [[ "$limit" == "0" || -z "$limit" ]]; then
+    # Список пользователей без квоты
+    for userfile in /var/cpanel/users/*; do
+        user=$(basename "$userfile")
+        limit=$(grep -i "^QUOTA=" "$userfile" | cut -d= -f2)
+        if [[ -z "$limit" || "$limit" == "0" ]]; then
             no_limit_users+=("$user")
         fi
-    done < <(ls -1 /var/cpanel/users)
+    done
 
     for user in "${no_limit_users[@]}"; do
         homedir="/home/$user"
@@ -119,4 +120,5 @@ echo "✅ Скрипт установлен: $SCRIPT_PATH"
 echo "📩 Email уведомлений: $EMAIL"
 echo "📆 Проверка будет выполняться: еженедельно по понедельникам в 04:00"
 echo "▶️ Запуск первой проверки прямо сейчас..."
+
 "$SCRIPT_PATH"
