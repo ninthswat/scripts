@@ -9,6 +9,7 @@ SMTP_FROM="HostFly. Мониторинг <support@hostfly.by>"
 
 # Порог для оповещения (в ГБ)
 THRESHOLD_GB=10
+MYSQL_DATA_DIR="/var/lib/mysql"
 
 # Проверка аргументов
 if [ "$#" -ne 1 ]; then
@@ -19,7 +20,7 @@ fi
 
 EMAIL="$1"
 SCRIPT_PATH="/usr/local/bin/mysql_db_monitor.sh"
-CRON_JOB="0 8,20 * * * $SCRIPT_PATH $EMAIL"
+CRON_JOB="0 8 * * * $SCRIPT_PATH $EMAIL"  # Ежедневно в 8:00
 HOSTNAME=$(hostname)
 LANG=ru_RU.UTF-8
 LC_ALL=ru_RU.UTF-8
@@ -51,19 +52,38 @@ send_email() {
 }
 
 check_db_sizes() {
-    # Получаем список баз данных, превышающих порог
-    local large_dbs=$(mysql -N -e "SELECT 
-        table_schema AS 'Database', 
-        ROUND(SUM(data_length + index_length) / 1024 / 1024 / 1024, 2) AS 'Size_GB'
-        FROM information_schema.TABLES 
-        GROUP BY table_schema 
-        HAVING SUM(data_length + index_length) > ${THRESHOLD_GB} * 1024 * 1024 * 1024 
-        ORDER BY Size_GB DESC" 2>/dev/null)
+    # Проверяем существование директории mysql
+    if [ ! -d "$MYSQL_DATA_DIR" ]; then
+        echo "Ошибка: Директория MySQL $MYSQL_DATA_DIR не найдена!" >&2
+        exit 1
+    fi
+
+    # Получаем список баз данных и их размеров через du
+    local large_dbs=$(cd "$MYSQL_DATA_DIR" && du -sh * 2>/dev/null | awk -v threshold="$THRESHOLD_GB" '
+    {
+        size=$1;
+        # Удаляем последний символ (K/M/G) и преобразуем в GB
+        value=substr(size, 1, length(size)-1);
+        unit=substr(size, length(size));
+        
+        if(unit == "G") {
+            gb=value;
+        } else if(unit == "M") {
+            gb=value/1024;
+        } else if(unit == "K") {
+            gb=value/1024/1024;
+        } else {
+            gb=0;
+        }
+        
+        if(gb > threshold) {
+            printf "%s %.2f GB\n", $2, gb;
+        }
+    }' | sort -k2 -nr)
 
     if [ -n "$large_dbs" ]; then
-        local db_list=$(echo "$large_dbs" | awk '{print $1 " (" $2 " ГБ)"}' | tr '\n' ', ' | sed 's/, $//')
         local count=$(echo "$large_dbs" | wc -l)
-        local total_size=$(echo "$large_dbs" | awk '{sum += $2} END {print sum}')
+        local total_size=$(echo "$large_dbs" | awk '{sum += $2} END {printf "%.2f", sum}')
         
         send_email "Высокий" \
                   "ПРЕДУПРЕЖДЕНИЕ: На сервере $(hostname) обнаружены большие БД (>${THRESHOLD_GB} ГБ)" \
@@ -79,7 +99,7 @@ install_cron_job() {
     
     if crontab -l | grep -q "$(basename "$SCRIPT_PATH")"; then
         echo "Задание cron успешно установлено:"
-        echo "Проверка будет выполняться в 08:00 и 20:00"
+        echo "Проверка будет выполняться ежедневно в 08:00"
     else
         echo "Ошибка при добавлении задания в cron!" >&2
         exit 1
