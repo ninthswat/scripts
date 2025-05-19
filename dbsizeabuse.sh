@@ -80,7 +80,7 @@ monitor_databases() {
 
         size_gb=\$(du -sBG "\$dir" 2>/dev/null | awk '{print \$1}' | sed 's/G//')
         if [[ "\$size_gb" =~ ^[0-9]+\$ ]] && [ "\$size_gb" -gt "\$THRESHOLD_GB" ]; then
-            output="\${output}\$(printf \"%s GB\t%s\n\" \"\$size_gb\" \"\$dir\")"
+            output="\${output}\$(printf "%s GB\t%s\n" "\$size_gb" "\$dir")"
         fi
     done
 
@@ -90,7 +90,7 @@ monitor_databases() {
         message+="Согласно п. 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\n"
         message+="Команде hostfly необходимо установить владельцев данных баз и уведомить их о нарушении."
 
-        echo -e "[ALERT] Обнаружены превышения:\n\$output"
+        echo -e "[ALERT] Обнаружены превышения баз данных:\n\$output"
         log_message "ALERT" "Обнаружены превышения. Отправка письма."
         send_email "\$EMAIL" "🚨 Большие базы данных на \$hostname" "\$message"
     else
@@ -102,7 +102,7 @@ monitor_databases() {
 monitor_databases
 EOF
 
-# Права и запуск
+# Права и cron
 chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
