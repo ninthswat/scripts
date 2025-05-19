@@ -85,16 +85,16 @@ monitor_databases() {
     done
 
     if [[ -n "\$raw_output" ]]; then
-        local header="🚨 ВНИМАНИЕ: Обнаружены превышения по объёму MySQL-баз данных на сервере \$hostname\n"
+        local header="ВНИМАНИЕ: Обнаружены превышения по объёму MySQL-баз данных на сервере \$hostname\n"
         header+="\n==============================================\n"
-        header+="Размер    | База данных\n"
-        header+="----------|-------------------------------------\n"
+        header+="Размер     | База данных\n"
+        header+="------------|-------------------------------------\n"
 
         local formatted=""
         while IFS= read -r line; do
             size=\$(echo "\$line" | awk '{print \$1}')
             db=\$(echo "\$line" | awk '{\$1=""; print \$0}' | sed 's/^ *//')
-            formatted+="\$(printf \"%-9s | %s\\n\" \"\$size\" \"\$db\")"
+            formatted="\$formatted\$(printf \"%-11s| %s\\n\" \"\$size\" \"\$db\")"
         done <<< "\$(echo -e \"\$raw_output\")"
 
         local footer="==============================================\n"
@@ -103,7 +103,7 @@ monitor_databases() {
 
         local message="\$header\$formatted\$footer"
 
-        echo -e "[ALERT] Обнаружены превышения:\n\$formatted"
+        echo -e "[ALERT] Обнаружены превышения баз данных:\n\$formatted"
         log_message "ALERT" "Обнаружены превышения. Отправка письма."
         send_email "\$EMAIL" "🚨 Большие базы данных на \$hostname" "\$message"
     else
@@ -120,7 +120,7 @@ chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
 
-# Установка cron
+# Установка в cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
