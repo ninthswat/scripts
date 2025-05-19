@@ -87,8 +87,15 @@ run_audit() {
             top_files=$(find "$homedir" -type f -printf "%s %p\n" 2>/dev/null | sort -rn | head -n 10 | awk '{ printf "%6.2f MB\t%s\n", $1/1024/1024, $2 }')
             top_dirs=$(du -sh "$homedir"/* 2>/dev/null | sort -rh | head -n 10)
 
+            category_usage=$(du -sh "$homedir"/{mail,public_html,.cpanel,.trash,logs} 2>/dev/null | awk '{printf "%-10s %s\n", $1, $2}')
+            top_extensions=$(find "$homedir" -type f 2>/dev/null | awk -F. '/\./ {print $NF}' | awk '{count[$1]++} END {for (e in count) print count[e], e}' | sort -rn | head -n 10)
+            ext_sizes=$(find "$homedir" -type f -exec du -b {} + 2>/dev/null | awk -F. '{ext=$NF} {a[ext]+=$1} END {for (e in a) printf "%8.2f MB\t%s\n", a[e]/1024/1024, e}' | sort -rn | head -10)
+
             report+="\nТоп 10 файлов:\n$top_files\n"
             report+="\nТоп 10 папок:\n$top_dirs\n"
+            report+="\nИспользование по категориям:\n$category_usage\n"
+            report+="\nТоп 10 типов файлов (по частоте):\n$top_extensions\n"
+            report+="\nОбщий объём по расширениям:\n$ext_sizes\n"
             report+="\n----------------------------------------\n"
         fi
     done
