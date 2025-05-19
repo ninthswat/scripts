@@ -2,7 +2,7 @@
 
 SCRIPT_PATH="/usr/local/bin/mysql_db_monitor.sh"
 LOG_FILE="/var/log/mysql_db_monitor.log"
-CRON_TIME="0 8 * * *"
+CRON_TIME="0 16 * * 3"  # Среда 16:00
 
 # Проверка и установка sendEmail
 if ! command -v sendEmail &>/dev/null; then
@@ -62,7 +62,7 @@ log_message() {
     local message="\$2"
     local timestamp
     timestamp=\$(date "+%Y-%m-%d %H:%M:%S")
-    echo "[\$timestamp] [\$level] \$message" >> "\$LOG_FILE"
+    echo "[\$timestamp] [$level] \$message" >> "\$LOG_FILE"
 }
 
 monitor_databases() {
@@ -106,13 +106,13 @@ chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
 
-# Установка в cron
+# Установка в cron (среда 16:00)
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
 echo "✅ Скрипт установлен: $SCRIPT_PATH"
 echo "📩 Email уведомлений: $EMAIL"
-echo "🕗 Cron-задача: ежедневно в 08:00"
+echo "🕓 Cron-задача: каждую среду в 16:00"
 echo "▶️ Запуск первой проверки прямо сейчас..."
 
 "$SCRIPT_PATH"
