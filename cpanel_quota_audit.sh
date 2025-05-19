@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_PATH="/usr/local/bin/cpanel_quota_audit.sh"
-CRON_TIME="0 4 * * 1"  # Понедельник 04:00
+CRON_TIME="0 16 * * 4"  # Четверг 16:00
 LOG_FILE="/var/log/cpanel_quota_audit.log"
 
 # Проверка и установка sendEmail
