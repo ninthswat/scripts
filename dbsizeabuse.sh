@@ -80,17 +80,16 @@ monitor_databases() {
 
         size_gb=\$(du -sBG "\$dir" 2>/dev/null | awk '{print \$1}' | sed 's/G//')
         if [[ "\$size_gb" =~ ^[0-9]+\$ ]] && [ "\$size_gb" -gt "\$THRESHOLD_GB" ]; then
-            output="\${output}\$(printf "%s GB\t%s\n" "\$size_gb" "\$dir")"
+            output="\${output}\n\${size_gb} GB\t\${dir}"
         fi
     done
 
     if [[ -n "\$output" ]]; then
-        local message="На сервере \$hostname были обнаружены базы данных, превышающие \$THRESHOLD_GB ГБ:\n\n"
-        message+="\$output\n\n"
-        message+="Согласно п. 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\n"
-        message+="Команде hostfly необходимо установить владельцев данных баз и уведомить их о нарушении."
+        local message="На сервере \$hostname были обнаружены базы данных, превышающие \$THRESHOLD_GB ГБ:\n\${output}\n\nСогласно п. 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\nКоманде hostfly необходимо установить владельцев данных баз и уведомить их о нарушении."
 
-        echo -e "[ALERT] Обнаружены превышения баз данных:\n\$output"
+        message=\$(echo -e "\$message")
+
+        echo -e "[ALERT] Обнаружены превышения баз данных:\$output"
         log_message "ALERT" "Обнаружены превышения. Отправка письма."
         send_email "\$EMAIL" "🚨 Большие базы данных на \$hostname" "\$message"
     else
@@ -102,12 +101,12 @@ monitor_databases() {
 monitor_databases
 EOF
 
-# Права и cron
+# Права и запуск
 chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
 
-# Установка cron
+# Установка в cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
