@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Проверка root-прав
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Требуются права root. Запустите с sudo!" >&2
+    exit 1
+fi
+
 # Конфигурация SMTP
 SMTP_SERVER="post.hostflyby.net"
 SMTP_PORT="2525"
@@ -11,19 +17,32 @@ SMTP_FROM="HostFly. Мониторинг <support@hostfly.by>"
 THRESHOLD_GB=10
 MYSQL_DATA_DIR="/var/lib/mysql"
 
-# Проверка аргументов
-if [ "$#" -ne 1 ]; then
-    echo "Использование: $0 <email_получателя>"
-    echo "Пример: $0 admin@example.com"
-    exit 1
-fi
-
-EMAIL="$1"
-SCRIPT_PATH="/usr/local/bin/mysql_db_monitor.sh"
-CRON_JOB="0 8 * * * $SCRIPT_PATH $EMAIL"  # Ежедневно в 8:00
-HOSTNAME=$(hostname)
-LANG=ru_RU.UTF-8
-LC_ALL=ru_RU.UTF-8
+# Функция для интерактивного ввода email
+get_email() {
+    if [ -t 0 ]; then
+        # Режим реального терминала
+        while true; do
+            read -p "Введите email для уведомлений: " email
+            if [[ "$email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+                break
+            else
+                echo "Ошибка: введите корректный email" >&2
+            fi
+        done
+    else
+        # Режим pipe - перенаправляем ввод с /dev/tty
+        exec < /dev/tty
+        while true; do
+            read -p "Введите email для уведомлений: " email
+            if [[ "$email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+                break
+            else
+                echo "Ошибка: введите корректный email" >&2
+            fi
+        done
+    fi
+    echo "$email"
+}
 
 send_email() {
     local priority=$1
@@ -106,9 +125,14 @@ install_cron_job() {
     fi
 }
 
-# Установочная часть
-if [ "$0" = "$BASH_SOURCE" ]; then
+# Основная установка
+main_install() {
     echo "Установка монитора размера баз данных MySQL"
+    EMAIL=$(get_email)
+    SCRIPT_PATH="/usr/local/bin/mysql_db_monitor.sh"
+    CRON_JOB="0 8 * * * $SCRIPT_PATH $EMAIL"
+    HOSTNAME=$(hostname)
+    
     echo "Получатель уведомлений: $EMAIL"
     echo "Порог оповещения: ${THRESHOLD_GB} ГБ"
     
@@ -118,7 +142,16 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     
     install_cron_job
     
-    echo "Установка завершена. Для теста запустите: $SCRIPT_PATH $EMAIL"
-fi
+    echo "Провожу первоначальную проверку..."
+    check_db_sizes
+    
+    echo ""
+    echo "Установка завершена!"
+    echo "Проверка настроек cron: crontab -l"
+    echo "Ручной запуск проверки: $SCRIPT_PATH"
+}
 
-[ "$0" = "$BASH_SOURCE" ] && [ "$1" != "--install" ] && check_db_sizes
+# Запуск установки
+if [ "$0" = "$BASH_SOURCE" ]; then
+    main_install
+fi
