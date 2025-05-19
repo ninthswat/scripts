@@ -68,7 +68,7 @@ log_message() {
 monitor_databases() {
     local hostname=\$(hostname)
     local now=\$(date "+%d.%m.%Y %H:%M:%S")
-    local output=""
+    local raw_output=""
 
     for dir in "\$MYSQL_DIR"/*; do
         bn=\$(basename "\$dir")
@@ -80,16 +80,30 @@ monitor_databases() {
 
         size_gb=\$(du -sBG "\$dir" 2>/dev/null | awk '{print \$1}' | sed 's/G//')
         if [[ "\$size_gb" =~ ^[0-9]+\$ ]] && [ "\$size_gb" -gt "\$THRESHOLD_GB" ]; then
-            output="\${output}\n\${size_gb} GB\t\${dir}"
+            raw_output="\${raw_output}\n\${size_gb} GB\t\${dir}"
         fi
     done
 
-    if [[ -n "\$output" ]]; then
-        local message="На сервере \$hostname были обнаружены базы данных, превышающие \$THRESHOLD_GB ГБ:\n\${output}\n\nСогласно п. 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\nКоманде hostfly необходимо установить владельцев данных баз и уведомить их о нарушении."
+    if [[ -n "\$raw_output" ]]; then
+        local header="🚨 ВНИМАНИЕ: Обнаружены превышения по объёму MySQL-баз данных на сервере \$hostname\n"
+        header+="\n==============================================\n"
+        header+="Размер    | База данных\n"
+        header+="----------|-------------------------------------\n"
 
-        message=\$(echo -e "\$message")
+        local formatted=""
+        while IFS= read -r line; do
+            size=\$(echo "\$line" | awk '{print \$1}')
+            db=\$(echo "\$line" | awk '{\$1=""; print \$0}' | sed 's/^ *//')
+            formatted+="\$(printf \"%-9s | %s\\n\" \"\$size\" \"\$db\")"
+        done <<< "\$(echo -e \"\$raw_output\")"
 
-        echo -e "[ALERT] Обнаружены превышения баз данных:\$output"
+        local footer="==============================================\n"
+        footer+="\n⚠️ Согласно пункту 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\n"
+        footer+="📌 Необходимо определить владельцев баз и уведомить их о нарушении."
+
+        local message="\$header\$formatted\$footer"
+
+        echo -e "[ALERT] Обнаружены превышения:\n\$formatted"
         log_message "ALERT" "Обнаружены превышения. Отправка письма."
         send_email "\$EMAIL" "🚨 Большие базы данных на \$hostname" "\$message"
     else
@@ -106,7 +120,7 @@ chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
 
-# Установка в cron
+# Установка cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
