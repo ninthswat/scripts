@@ -25,7 +25,7 @@ if [[ ! "$EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}$ ]]; then
 fi
 
 # Создание скрипта мониторинга
-cat > "$SCRIPT_PATH" <<EOF
+cat > "$SCRIPT_PATH" <<'EOF'
 #!/bin/bash
 
 EMAIL="$EMAIL"
