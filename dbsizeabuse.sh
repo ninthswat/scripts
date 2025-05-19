@@ -4,13 +4,27 @@ SCRIPT_PATH="/usr/local/bin/mysql_db_monitor.sh"
 LOG_FILE="/var/log/mysql_db_monitor.log"
 CRON_TIME="0 8 * * *"
 
+# Проверка и установка sendEmail
+if ! command -v sendEmail &>/dev/null; then
+    echo "[INFO] sendEmail не найден, устанавливаю..."
+    if command -v apt &>/dev/null; then
+        apt update && apt install -y sendemail
+    elif command -v yum &>/dev/null; then
+        yum install -y sendEmail
+    else
+        echo "[ERROR] Не удалось установить sendEmail: не найден apt или yum"
+        exit 1
+    fi
+fi
+
+# Запрос email
 read -p "Введите email для уведомлений: " EMAIL
 if [[ ! "$EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}$ ]]; then
-    echo "❌ Некорректный email."
+    echo "❌ Некорректный email." >&2
     exit 1
 fi
 
-# Создание скрипта мониторинга
+# Создание основного скрипта
 cat > "$SCRIPT_PATH" <<EOF
 #!/bin/bash
 
@@ -25,20 +39,6 @@ THRESHOLD_GB=10
 MYSQL_DIR="/var/lib/mysql"
 EXCLUDE_LIST="mysql performance_schema information_schema sys"
 LOG_FILE="/var/log/mysql_db_monitor.log"
-
-check_sendemail() {
-    if ! command -v sendEmail &>/dev/null; then
-        echo "[INFO] sendEmail не найден, устанавливаю..." | tee -a "\$LOG_FILE"
-        if command -v apt &>/dev/null; then
-            apt update && apt install -y sendemail
-        elif command -v yum &>/dev/null; then
-            yum install -y sendEmail
-        else
-            echo "[ERROR] Не удалось установить sendEmail: не найден apt или yum" | tee -a "\$LOG_FILE"
-            exit 1
-        fi
-    fi
-}
 
 send_email() {
     local recipient="\$1"
@@ -80,7 +80,7 @@ monitor_databases() {
 
         size_gb=\$(du -sBG "\$dir" 2>/dev/null | awk '{print \$1}' | sed 's/G//')
         if [[ "\$size_gb" =~ ^[0-9]+\$ ]] && [ "\$size_gb" -gt "\$THRESHOLD_GB" ]; then
-            output+="\${size_gb} GB\t\$dir\n"
+            output+="\$(printf "%s GB\t%s\n" "\$size_gb" "\$dir")"
         fi
     done
 
@@ -90,28 +90,27 @@ monitor_databases() {
         message+="Согласно п. 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\n"
         message+="Команде hostfly необходимо установить владельцев данных баз и уведомить их о нарушении."
 
-        echo -e "[ALERT] Обнаружены превышения:\n\$output"
+        echo -e "[ALERT] Обнаружены превышения баз данных:\n\$output"
         log_message "ALERT" "Обнаружены превышения. Отправка письма."
         send_email "\$EMAIL" "🚨 Большие базы данных на \$hostname" "\$message"
     else
         echo "[OK] Все базы данных меньше \$THRESHOLD_GB ГБ"
-        log_message "OK" "Все базы в норме"
+        log_message "OK" "Все базы в пределах нормы"
     fi
 }
 
-check_sendemail
 monitor_databases
 EOF
 
+# Права
 chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
 
-# Установка в cron
+# Обновление cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
-echo "✅ Установка завершена."
-echo "📍 Скрипт: $SCRIPT_PATH"
-echo "🕗 Проверка в cron: ежедневно в 08:00"
+echo "✅ Скрипт установлен: $SCRIPT_PATH"
 echo "📩 Email уведомлений: $EMAIL"
+echo "🕗 Cron-задача: ежедневно в 08:00"
