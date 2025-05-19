@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_PATH="/usr/local/bin/cpanel_quota_audit.sh"
-CRON_TIME="0 16 * * 4"  # Четверг 16:00
+CRON_TIME="0 4 * * 4"  # Четверг 04:00
 LOG_FILE="/var/log/cpanel_quota_audit.log"
 
 # Проверка и установка sendEmail
@@ -24,7 +24,7 @@ if [[ ! "$EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}$ ]]; then
     exit 1
 fi
 
-# Создание скрипта проверки
+# Создание скрипта
 cat > "$SCRIPT_PATH" <<'EOF'
 #!/bin/bash
 
@@ -59,11 +59,14 @@ log() {
 run_audit() {
     local hostname=$(hostname)
     local report=""
+
+    # Преамбула для администраторов
+    report+="📌 Согласно п. 7.1.1 правил пользования, безлимитное пространство предоставляется только для веб-файлов, активной электронной почты и содержимого сайтов.\n"
+    report+="Оно не может использоваться для хранения, раздачи, архивирования данных или как внешнее хранилище (в т.ч. email или FTP).\n"
+    report+="📣 Команде HOSTFLY необходимо определить, имеются ли факты нарушения, и при необходимости уведомить владельцев услуг.\n\n"
+    report+="----------------------------------------\n"
+
     local no_limit_users=()
-
-    log "Начат аудит квот"
-
-    # Список пользователей без квоты
     for userfile in /var/cpanel/users/*; do
         user=$(basename "$userfile")
         limit=$(grep -i "^QUOTA=" "$userfile" | cut -d= -f2)
@@ -100,11 +103,11 @@ run_audit() {
         fi
     done
 
-    if [[ -n "$report" ]]; then
-        log "Найдены пользователи без квот с превышением > ${THRESHOLD_GB} ГБ"
-        send_email "🚨 Пользователи без лимита, превысившие ${THRESHOLD_GB} ГБ на $hostname" "$report"
+    if [[ "$report" =~ "Пользователь:" ]]; then
+        log "Отправка отчёта: превышение > ${THRESHOLD_GB} ГБ"
+        send_email "🚨 Безлимитные аккаунты с превышением на $hostname" "$report"
     else
-        log "Все пользователи в пределах квот"
+        log "Нет пользователей с превышением квоты"
     fi
 }
 
@@ -125,7 +128,7 @@ crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 
 echo "✅ Скрипт установлен: $SCRIPT_PATH"
 echo "📩 Email уведомлений: $EMAIL"
-echo "📆 Проверка будет выполняться: еженедельно по понедельникам в 04:00"
+echo "📆 Проверка будет выполняться: каждый четверг в 04:00"
 echo "▶️ Запуск первой проверки прямо сейчас..."
 
 "$SCRIPT_PATH"
