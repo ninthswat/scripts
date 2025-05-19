@@ -80,15 +80,21 @@ monitor_databases() {
 
         size_gb=$(du -sBG "$dir" 2>/dev/null | awk '{print $1}' | sed 's/G//')
         if [[ "$size_gb" =~ ^[0-9]+$ ]] && [ "$size_gb" -gt "$THRESHOLD_GB" ]; then
-            rows+="<tr><td>${size_gb} GB</td><td>${bn}</td></tr>"
+            rows="$rows<tr>
+                <td style='border: 1px solid #ccc; padding: 6px 12px;'>${size_gb} GB</td>
+                <td style='border: 1px solid #ccc; padding: 6px 12px;'>${bn}</td>
+            </tr>"
         fi
     done
 
     if [[ -n "$rows" ]]; then
         local message="<html><body>"
         message+="<p><strong>ВНИМАНИЕ:</strong> Обнаружены превышения по объёму MySQL-баз данных на сервере <a href=\"https://$hostname\">$hostname</a></p>"
-        message+="<table style='border-collapse:collapse;font-family:monospace;'>"
-        message+="<thead><tr><th align='left'>Размер</th><th align='left'>База данных</th></tr></thead><tbody>"
+        message+="<table style='border-collapse: collapse; font-family: monospace; border: 1px solid #ccc;'>"
+        message+="<thead><tr>
+            <th style='border: 1px solid #ccc; padding: 6px 12px; text-align: left;'>Размер</th>
+            <th style='border: 1px solid #ccc; padding: 6px 12px; text-align: left;'>База данных</th>
+        </tr></thead><tbody>"
         message+="$rows"
         message+="</tbody></table>"
         message+="<p style='margin-top:20px;'>⚠️ Согласно пункту 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.<br>"
