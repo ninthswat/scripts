@@ -88,11 +88,11 @@ monitor_databases() {
         local header="ВНИМАНИЕ: Обнаружены превышения по объёму MySQL-баз данных на сервере $hostname\n"
         local table_header="\n==============================================\nРазмер     | База данных\n------------|--------------------------\n"
         local formatted=$(echo -e "$raw_output" | awk -F '\t' '{ printf "%-11s| %s\n", $1, $2 }')
-        local footer="\n==============================================\n"
+        local footer="\n\n==============================================\n"
         footer+="\n⚠️ Согласно пункту 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\n"
         footer+="📌 Необходимо определить владельцев баз и уведомить их о нарушении."
 
-        local message="${header}${table_header}${formatted}${footer}"
+        local message="${header}${table_header}${formatted}\n\n${footer}"
 
         echo -e "[ALERT] Обнаружены превышения баз данных:\n$formatted"
         log_message "ALERT" "Обнаружены превышения. Отправка письма."
