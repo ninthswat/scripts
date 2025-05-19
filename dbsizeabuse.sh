@@ -80,7 +80,7 @@ monitor_databases() {
 
         size_gb=\$(du -sBG "\$dir" 2>/dev/null | awk '{print \$1}' | sed 's/G//')
         if [[ "\$size_gb" =~ ^[0-9]+\$ ]] && [ "\$size_gb" -gt "\$THRESHOLD_GB" ]; then
-            output="\${output}\n\${size_gb} GB\t\${dir}"
+            output="\${output}\n\${size_gb} GB\t\${bn}"
         fi
     done
 
