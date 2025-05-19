@@ -33,7 +33,7 @@ SMTP_SERVER="post.hostflyby.net"
 SMTP_PORT="2525"
 SMTP_USER="hfl/dn"
 SMTP_PASS="s6tGiMzCee745dKO67zgAMT9"
-SMTP_FROM="HostFly Мониторинг <support@hostfly.by>"
+SMTP_FROM="HostFly Мониторинг <noreply@hostfly.by>"
 
 THRESHOLD_GB=10
 MYSQL_DIR="/var/lib/mysql"
@@ -53,7 +53,7 @@ send_email() {
               -xu "$SMTP_USER" \
               -xp "$SMTP_PASS" \
               -o tls=no \
-              -o message-content-type=text/plain \
+              -o message-content-type=html \
               -o message-charset=UTF-8
 }
 
@@ -68,7 +68,7 @@ log_message() {
 monitor_databases() {
     local hostname=$(hostname)
     local now=$(date "+%d.%m.%Y %H:%M:%S")
-    local raw_output=""
+    local rows=""
 
     for dir in "$MYSQL_DIR"/*; do
         bn=$(basename "$dir")
@@ -80,23 +80,24 @@ monitor_databases() {
 
         size_gb=$(du -sBG "$dir" 2>/dev/null | awk '{print $1}' | sed 's/G//')
         if [[ "$size_gb" =~ ^[0-9]+$ ]] && [ "$size_gb" -gt "$THRESHOLD_GB" ]; then
-            raw_output="${raw_output}\n${size_gb} GB\t${bn}"
+            rows+="<tr><td>${size_gb} GB</td><td>${bn}</td></tr>"
         fi
     done
 
-    if [[ -n "$raw_output" ]]; then
-        local header="ВНИМАНИЕ: Обнаружены превышения по объёму MySQL-баз данных на сервере $hostname\n"
-        local table_header="\n==============================================\nРазмер     | База данных\n------------|--------------------------\n"
-        local formatted=$(echo -e "$raw_output" | awk -F '\t' '{ printf "%-11s| %s\n", $1, $2 }')
-        local footer="\n\n==============================================\n"
-        footer+="\n⚠️ Согласно пункту 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\n"
-        footer+="📌 Необходимо определить владельцев баз и уведомить их о нарушении."
+    if [[ -n "$rows" ]]; then
+        local message="<html><body>"
+        message+="<p><strong>ВНИМАНИЕ:</strong> Обнаружены превышения по объёму MySQL-баз данных на сервере <a href=\"https://$hostname\">$hostname</a></p>"
+        message+="<table style='border-collapse:collapse;font-family:monospace;'>"
+        message+="<thead><tr><th align='left'>Размер</th><th align='left'>База данных</th></tr></thead><tbody>"
+        message+="$rows"
+        message+="</tbody></table>"
+        message+="<p style='margin-top:20px;'>⚠️ Согласно пункту 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.<br>"
+        message+="📌 Необходимо определить владельцев баз и уведомить их о нарушении.</p>"
+        message+="</body></html>"
 
-        local message="${header}${table_header}${formatted}\n\n${footer}"
-
-        echo -e "[ALERT] Обнаружены превышения баз данных:\n$formatted"
         log_message "ALERT" "Обнаружены превышения. Отправка письма."
         send_email "$EMAIL" "🚨 Большие базы данных на $hostname" "$message"
+        echo "[ALERT] Письмо отправлено"
     else
         echo "[OK] Все базы данных меньше $THRESHOLD_GB ГБ"
         log_message "OK" "Все базы в пределах нормы"
@@ -109,12 +110,12 @@ EOF
 # Подстановка email
 sed -i "s|{{EMAIL}}|$EMAIL|" "$SCRIPT_PATH"
 
-# Права
+# Права и лог
 chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
 
-# Установка в cron
+# Установка cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
