@@ -58,7 +58,6 @@ install_script() {
         exit 1
     fi
 
-    # Создание исполняемого скрипта мониторинга
     cat > "$SCRIPT_PATH" <<EOF
 #!/bin/bash
 EMAIL="$EMAIL"
@@ -85,8 +84,7 @@ send_email() {
 monitor_databases() {
     local hostname=\$(hostname)
     local now=\$(date "+%d.%m.%Y %H:%M:%S")
-
-    local exclude_pattern=\$(echo "\$EXCLUDE_LIST" | tr ' ' '\n' | sed 's|^|'"\$MYSQL_DIR"'/|' | tr '\n' '|' | sed 's/|$//')
+    local exclude_pattern=\$(echo "\$EXCLUDE_LIST" | tr ' ' '\n' | sed 's|^|\$MYSQL_DIR/|' | tr '\n' '|' | sed 's/|$//')
 
     local output=\$(du -sBG "\$MYSQL_DIR"/* 2>/dev/null | grep -Ev "\$exclude_pattern" | awk -v threshold="\$THRESHOLD_GB" '
         \$1 ~ /[0-9]+G/ {
@@ -97,12 +95,12 @@ monitor_databases() {
         }')
 
     if [[ -n "\$output" ]]; then
-        local message="На сервере \$(hostname) были обнаружены базы данных, превышающие \$THRESHOLD_GB ГБ:\n\n"
+        local message="На сервере \$hostname были обнаружены базы данных, превышающие \$THRESHOLD_GB ГБ:\n\n"
         message+="\$output\n\n"
         message+="Согласно п. 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\n"
         message+="Команде hostfly необходимо установить владельцев данных баз и уведомить их о нарушении."
 
-        send_email "\$EMAIL" "🚨 Большие базы данных на \$(hostname)" "\$message"
+        send_email "\$EMAIL" "🚨 Большие базы данных на \$hostname" "\$message"
     fi
 }
 
@@ -110,8 +108,11 @@ monitor_databases
 EOF
 
     chmod +x "$SCRIPT_PATH"
-
-    # Добавление в cron
     (crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH"; echo "$CRON_TIME $SCRIPT_PATH") | crontab -
+    echo "✅ Скрипт установлен как $SCRIPT_PATH"
+    echo "🕗 Cron: ежедневно в 08:00"
+}
 
-    echo "✅ Скрипт установлен в $
+if [ "$0" = "$BASH_SOURCE" ]; then
+    install_script
+fi
