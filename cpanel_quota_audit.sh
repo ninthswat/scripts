@@ -70,12 +70,11 @@ run_audit() {
 
         quota_output=$(quota -svu "$user" 2>/dev/null)
 
-        # Проверяем: все limit = 0K?
+        # Пропустить, если хотя бы один limit != 0K
         if echo "$quota_output" | awk '$1 ~ /^\/dev/ && $4 != "0K"' | grep -q .; then
             continue
         fi
 
-        # Получаем максимальное использование
         usage_raw=$(echo "$quota_output" | awk '$1 ~ /^\/dev/ && $2 ~ /^[0-9]+[KMG]$/ {print $2}' | sort -nr | head -n 1)
         usage_unit=$(echo "$usage_raw" | grep -o '[KMG]$')
         usage_value=$(echo "$usage_raw" | grep -o '^[0-9.]\+')
