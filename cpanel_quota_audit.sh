@@ -60,7 +60,6 @@ run_audit() {
     local hostname=$(hostname)
     local report=""
 
-    # Преамбула для администраторов
     report+="📌 Согласно п. 7.1.1 правил пользования, безлимитное пространство предоставляется только для веб-файлов, активной электронной почты и содержимого сайтов.\n"
     report+="Оно не может использоваться для хранения, раздачи, архивирования данных или как внешнее хранилище (в т.ч. email или FTP).\n"
     report+="📣 Команде HOSTFLY необходимо определить, имеются ли факты нарушения, и при необходимости уведомить владельцев услуг.\n\n"
@@ -79,28 +78,37 @@ run_audit() {
         homedir="/home/$user"
         [ -d "$homedir" ] || continue
 
-        usage_kb=$(du -sk "$homedir" 2>/dev/null | awk '{print $1}')
-        usage_gb=$((usage_kb / 1024 / 1024))
+        usage_raw=$(quota -svu "$user" 2>/dev/null | awk '/^\/dev/ {print $2}' | head -n 1)
+        usage_unit=$(echo "$usage_raw" | grep -o '[KMG]$')
+        usage_value=$(echo "$usage_raw" | grep -o '^[0-9.]\+')
 
-        if [ "$usage_gb" -gt "$THRESHOLD_GB" ]; then
-            report+="Пользователь: $user\n"
-            report+="Домашняя директория: $homedir\n"
-            report+="Использование: ${usage_gb} GB\n"
+        case "$usage_unit" in
+            K) usage_gb=$(awk "BEGIN {print $usage_value / 1024 / 1024}") ;;
+            M) usage_gb=$(awk "BEGIN {print $usage_value / 1024}") ;;
+            G) usage_gb="$usage_value" ;;
+            *) usage_gb=0 ;;
+        esac
 
-            top_files=$(find "$homedir" -type f -printf "%s %p\n" 2>/dev/null | sort -rn | head -n 10 | awk '{ printf "%6.2f MB\t%s\n", $1/1024/1024, $2 }')
-            top_dirs=$(du -sh "$homedir"/* 2>/dev/null | sort -rh | head -n 10)
+        usage_gb_int=$(awk "BEGIN {print int($usage_gb)}")
+        [ "$usage_gb_int" -lt "$THRESHOLD_GB" ] && continue
 
-            category_usage=$(du -sh "$homedir"/{mail,public_html,.cpanel,.trash,logs} 2>/dev/null | awk '{printf "%-10s %s\n", $1, $2}')
-            top_extensions=$(find "$homedir" -type f 2>/dev/null | awk -F. '/\./ {print $NF}' | awk '{count[$1]++} END {for (e in count) print count[e], e}' | sort -rn | head -n 10)
-            ext_sizes=$(find "$homedir" -type f -exec du -b {} + 2>/dev/null | awk -F. '{ext=$NF} {a[ext]+=$1} END {for (e in a) printf "%8.2f MB\t%s\n", a[e]/1024/1024, e}' | sort -rn | head -10)
+        report+="Пользователь: $user\n"
+        report+="Домашняя директория: $homedir\n"
+        report+="Использование: ${usage_gb_int} GB\n"
 
-            report+="\nТоп 10 файлов:\n$top_files\n"
-            report+="\nТоп 10 папок:\n$top_dirs\n"
-            report+="\nИспользование по категориям:\n$category_usage\n"
-            report+="\nТоп 10 типов файлов (по частоте):\n$top_extensions\n"
-            report+="\nОбщий объём по расширениям:\n$ext_sizes\n"
-            report+="\n----------------------------------------\n"
-        fi
+        top_files=$(find "$homedir" -type f -printf "%s %p\n" 2>/dev/null | sort -rn | head -n 10 | awk '{ printf "%6.2f MB\t%s\n", $1/1024/1024, $2 }')
+        top_dirs=$(du -sh "$homedir"/* 2>/dev/null | sort -rh | head -n 10)
+
+        category_usage=$(du -sh "$homedir"/{mail,public_html,.cpanel,.trash,logs} 2>/dev/null | awk '{printf "%-10s %s\n", $1, $2}')
+        top_extensions=$(find "$homedir" -type f 2>/dev/null | awk -F. '/\./ {print $NF}' | awk '{count[$1]++} END {for (e in count) print count[e], e}' | sort -rn | head -n 10)
+        ext_sizes=$(find "$homedir" -type f -exec du -b {} + 2>/dev/null | awk -F. '{ext=$NF} {a[ext]+=$1} END {for (e in a) printf "%8.2f MB\t%s\n", a[e]/1024/1024, e}' | sort -rn | head -10)
+
+        report+="\nТоп 10 файлов:\n$top_files\n"
+        report+="\nТоп 10 папок:\n$top_dirs\n"
+        report+="\nИспользование по категориям:\n$category_usage\n"
+        report+="\nТоп 10 типов файлов (по частоте):\n$top_extensions\n"
+        report+="\nОбщий объём по расширениям:\n$ext_sizes\n"
+        report+="\n----------------------------------------\n"
     done
 
     if [[ "$report" =~ "Пользователь:" ]]; then
