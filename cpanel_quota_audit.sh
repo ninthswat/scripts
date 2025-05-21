@@ -70,12 +70,10 @@ run_audit() {
 
         quota_output=$(quota -s "$user" 2>/dev/null)
 
-        # Пропустить, если хоть один limit != 0K
         if echo "$quota_output" | awk '$1 ~ /^\/dev/ && $4 != "0K"' | grep -q .; then
             continue
         fi
 
-        # Найти максимальный объем space (в байтах)
         max_bytes=0
         while read -r line; do
             size=$(echo "$line" | awk '$1 ~ /^\/dev/ {print $2}')
@@ -114,8 +112,23 @@ run_audit() {
 
         top_dirs=$(du -sh "$homedir"/* 2>/dev/null | sort -rh | head -n 10)
         category_usage=$(du -sh "$homedir"/{mail,public_html,.cpanel,.trash,logs} 2>/dev/null | awk '{printf "%-10s %s\n", $1, $2}')
-        top_extensions=$(find "$homedir" -type f 2>/dev/null | awk -F. '/\./ {count[$NF]++} END{for(e in count) print count[e], e}' | sort -rn | head -n 10)
-        ext_sizes=$(find "$homedir" -type f -exec du -b {} + 2>/dev/null | awk -F. '{ext=$NF} {a[ext]+=$1} END{for(e in a) printf "%8.2f MB\t%s\n", a[e]/1024/1024, e}' | sort -rn | head -10)
+        top_extensions=$(find "$homedir" -type f 2>/dev/null | awk -F. '/\./ {count[tolower($NF)]++} END{for(e in count) print count[e], e}' | sort -rn | head -n 10)
+
+        ext_sizes=$(find "$homedir" -type f -exec du -b {} + 2>/dev/null | awk -F. '
+        {
+            ext=tolower($NF)
+            a[ext]+=$1
+        }
+        END {
+            for (e in a) {
+                size_mb = a[e]/1024/1024
+                if (size_mb >= 1024) {
+                    printf "%8.2f GB\t%s\n", size_mb/1024, e
+                } else {
+                    printf "%8.2f MB\t%s\n", size_mb, e
+                }
+            }
+        }' | sort -rn | head -10)
 
         report+="\nТоп 10 файлов:\n$top_files\n"
         report+="\nТоп 10 папок:\n$top_dirs\n"
