@@ -70,23 +70,31 @@ run_audit() {
 
         quota_output=$(quota -svu "$user" 2>/dev/null)
 
-        # Пропустить, если хотя бы один limit != 0K
+        # Пропустить, если хоть один limit != 0K
         if echo "$quota_output" | awk '$1 ~ /^\/dev/ && $4 != "0K"' | grep -q .; then
             continue
         fi
 
-        usage_raw=$(echo "$quota_output" | awk '$1 ~ /^\/dev/ && $2 ~ /^[0-9]+[KMG]$/ {print $2}' | sort -nr | head -n 1)
-        usage_unit=$(echo "$usage_raw" | grep -o '[KMG]$')
-        usage_value=$(echo "$usage_raw" | grep -o '^[0-9.]\+')
+        # Найти максимальный объем space (в байтах)
+        max_bytes=0
+        while read -r line; do
+            size=$(echo "$line" | awk '$1 ~ /^\/dev/ {print $2}')
+            unit="${size: -1}"
+            value="${size%?}"
+            case "$unit" in
+                K) bytes=$(awk "BEGIN {print $value * 1024}") ;;
+                M) bytes=$(awk "BEGIN {print $value * 1024 * 1024}") ;;
+                G) bytes=$(awk "BEGIN {print $value * 1024 * 1024 * 1024}") ;;
+                *) bytes=0 ;;
+            esac
+            if (( $(awk "BEGIN {print ($bytes > $max_bytes)}") )); then
+                max_bytes=$bytes
+            fi
+        done <<< "$(echo "$quota_output" | awk '$1 ~ /^\/dev/')"
 
-        case "$usage_unit" in
-            K) usage_gb=$(awk "BEGIN {print $usage_value / 1024 / 1024}") ;;
-            M) usage_gb=$(awk "BEGIN {print $usage_value / 1024}") ;;
-            G) usage_gb="$usage_value" ;;
-            *) usage_gb=0 ;;
-        esac
-
+        usage_gb=$(awk "BEGIN {print $max_bytes / 1024 / 1024 / 1024}")
         usage_gb_int=$(awk "BEGIN {print int($usage_gb)}")
+
         [ "$usage_gb_int" -lt "$THRESHOLD_GB" ] && continue
 
         report+="Пользователь: $user\n"
@@ -124,6 +132,7 @@ sed -i "s|{{EMAIL}}|$EMAIL|" "$SCRIPT_PATH"
 chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE" && chmod 644 "$LOG_FILE"
 
+# Установка cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
