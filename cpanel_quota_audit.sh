@@ -78,7 +78,7 @@ run_audit() {
         homedir="/home/$user"
         [ -d "$homedir" ] || continue
 
-        usage_raw=$(quota -svu "$user" 2>/dev/null | awk '/^\/dev/ {print $2}' | head -n 1)
+        usage_raw=$(quota -svu "$user" 2>/dev/null | awk '/^\/dev/ && $2 ~ /^[0-9]+[KMG]$/ {print $2}' | sort -nr | head -n 1)
         usage_unit=$(echo "$usage_raw" | grep -o '[KMG]$')
         usage_value=$(echo "$usage_raw" | grep -o '^[0-9.]\+')
 
