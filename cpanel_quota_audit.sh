@@ -68,7 +68,7 @@ run_audit() {
         homedir="/home/$user"
         [ -d "$homedir" ] || continue
 
-        quota_output=$(quota -svu "$user" 2>/dev/null)
+        quota_output=$(quota -s "$user" 2>/dev/null)
 
         # Пропустить, если хоть один limit != 0K
         if echo "$quota_output" | awk '$1 ~ /^\/dev/ && $4 != "0K"' | grep -q .; then
@@ -101,7 +101,17 @@ run_audit() {
         report+="Домашняя директория: $homedir\n"
         report+="Использование: ${usage_gb_int} GB\n"
 
-        top_files=$(find "$homedir" -type f -printf "%s %p\n" 2>/dev/null | sort -rn | head -n 10 | awk '{ printf "%6.2f MB\t%s\n", $1/1024/1024, $2 }')
+        top_files=$(find "$homedir" -type f -printf "%s %p\n" 2>/dev/null \
+            | sort -rn | head -n 10 \
+            | awk '{
+                size_mb = $1 / 1024 / 1024;
+                if (size_mb >= 1024) {
+                    printf "%6.2f GB\t%s\n", size_mb / 1024, $2
+                } else {
+                    printf "%6.2f MB\t%s\n", size_mb, $2
+                }
+            }')
+
         top_dirs=$(du -sh "$homedir"/* 2>/dev/null | sort -rh | head -n 10)
         category_usage=$(du -sh "$homedir"/{mail,public_html,.cpanel,.trash,logs} 2>/dev/null | awk '{printf "%-10s %s\n", $1, $2}')
         top_extensions=$(find "$homedir" -type f 2>/dev/null | awk -F. '/\./ {count[$NF]++} END{for(e in count) print count[e], e}' | sort -rn | head -n 10)
