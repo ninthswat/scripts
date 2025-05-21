@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_PATH="/usr/local/bin/cpanel_quota_audit.sh"
-CRON_TIME="0 4 * * 4"     # Четверг 04:00
+CRON_TIME="0 4 * * 4"  # Четверг 04:00
 LOG_FILE="/var/log/cpanel_quota_audit.log"
 
 # Проверка и установка sendEmail
@@ -59,12 +59,11 @@ run_audit() {
     local hostname=$(hostname)
     local report=""
 
-    report+="📌 Согласно п. 7.1.1 правил пользования, безлимитное пространство предназначено только для веб-файлов, активной почты и содержимого сайтов.\n"
+    report+="📌 Согласно п. 7.1.1 правил пользования, безлимитное пространство предназначено только для веб-файлов, активной электронной почты и содержимого сайтов.\n"
     report+="Оно не может использоваться для хранения, раздачи, архивирования данных или как внешнее хранилище.\n"
-    report+="📣 Команде HOSTFLY необходимо проверить нарушения и уведомить владельцев.\n\n"
+    report+="📣 Команде HOSTFLY необходимо определить нарушения и уведомить владельцев.\n\n"
     report+="----------------------------------------\n"
 
-    # Собираем список безлимитных пользователей
     local no_limit_users=()
     for userfile in /var/cpanel/users/*; do
         user=$(basename "$userfile")
@@ -78,19 +77,13 @@ run_audit() {
         homedir="/home/$user"
         [ -d "$homedir" ] || continue
 
-        # Надёжно читаем максимальный объём из quota
-        usage_raw=$(quota -svu "$user" 2>/dev/null \
-            | awk '/^[[:space:]]+[0-9]+[KMG]/ {print $1}' \
-            | sort -nr \
-            | head -n 1)
-
-        # Разбираем единицы
-        usage_unit=${usage_raw: -1}
-        usage_value=${usage_raw%?}
+        usage_raw=$(quota -svu "$user" 2>/dev/null | awk '$1 ~ /^\/dev/ && $2 ~ /^[0-9]+[KMG]$/ {print $2}' | sort -nr | head -n 1)
+        usage_unit=$(echo "$usage_raw" | grep -o '[KMG]$')
+        usage_value=$(echo "$usage_raw" | grep -o '^[0-9.]\+')
 
         case "$usage_unit" in
-            K) usage_gb=$(awk "BEGIN {print $usage_value/1024/1024}") ;;
-            M) usage_gb=$(awk "BEGIN {print $usage_value/1024}") ;;
+            K) usage_gb=$(awk "BEGIN {print $usage_value / 1024 / 1024}") ;;
+            M) usage_gb=$(awk "BEGIN {print $usage_value / 1024}") ;;
             G) usage_gb="$usage_value" ;;
             *) usage_gb=0 ;;
         esac
@@ -98,32 +91,20 @@ run_audit() {
         usage_gb_int=$(awk "BEGIN {print int($usage_gb)}")
         [ "$usage_gb_int" -lt "$THRESHOLD_GB" ] && continue
 
-        # Формируем отчёт
         report+="Пользователь: $user\n"
         report+="Домашняя директория: $homedir\n"
         report+="Использование: ${usage_gb_int} GB\n"
 
-        top_files=$(find "$homedir" -type f -printf "%s %p\n" 2>/dev/null \
-            | sort -rn | head -n 10 \
-            | awk '{ printf "%6.2f MB\t%s\n", $1/1024/1024, $2 }')
-
+        top_files=$(find "$homedir" -type f -printf "%s %p\n" 2>/dev/null | sort -rn | head -n 10 | awk '{ printf "%6.2f MB\t%s\n", $1/1024/1024, $2 }')
         top_dirs=$(du -sh "$homedir"/* 2>/dev/null | sort -rh | head -n 10)
-
-        category_usage=$(du -sh "$homedir"/{mail,public_html,.cpanel,.trash,logs} 2>/dev/null \
-            | awk '{printf "%-10s %s\n", $1, $2}')
-
-        top_ext=$(find "$homedir" -type f 2>/dev/null \
-            | awk -F. '/\./ {count[$NF]++} END{for(e in count) print count[e], e}' \
-            | sort -rn | head -n 10)
-
-        ext_sizes=$(find "$homedir" -type f -exec du -b {} + 2>/dev/null \
-            | awk -F. '{ext=$NF; a[ext]+=$1} END{for(e in a) printf "%8.2f MB\t%s\n", a[e]/1024/1024, e}' \
-            | sort -rn | head -n 10)
+        category_usage=$(du -sh "$homedir"/{mail,public_html,.cpanel,.trash,logs} 2>/dev/null | awk '{printf "%-10s %s\n", $1, $2}')
+        top_extensions=$(find "$homedir" -type f 2>/dev/null | awk -F. '/\./ {count[$NF]++} END{for(e in count) print count[e], e}' | sort -rn | head -n 10)
+        ext_sizes=$(find "$homedir" -type f -exec du -b {} + 2>/dev/null | awk -F. '{ext=$NF} {a[ext]+=$1} END{for(e in a) printf "%8.2f MB\t%s\n", a[e]/1024/1024, e}' | sort -rn | head -10)
 
         report+="\nТоп 10 файлов:\n$top_files\n"
         report+="\nТоп 10 папок:\n$top_dirs\n"
         report+="\nИспользование по категориям:\n$category_usage\n"
-        report+="\nТоп 10 типов файлов:\n$top_ext\n"
+        report+="\nТоп 10 типов файлов:\n$top_extensions\n"
         report+="\nОбъём по расширениям:\n$ext_sizes\n"
         report+="\n----------------------------------------\n"
     done
@@ -145,7 +126,7 @@ sed -i "s|{{EMAIL}}|$EMAIL|" "$SCRIPT_PATH"
 chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE" && chmod 644 "$LOG_FILE"
 
-# Устанавливаем cron
+# Установка cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
