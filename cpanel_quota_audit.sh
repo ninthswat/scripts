@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPT_PATH="/usr/local/bin/cpanel_quota_audit.sh"
-CRON_TIME="0 4 * * 4"  # Четверг 04:00
+CRON_TIME="0 4 * * 4"
 LOG_FILE="/var/log/cpanel_quota_audit.log"
 
 # Проверка и установка sendEmail
@@ -59,25 +59,24 @@ run_audit() {
     local hostname=$(hostname)
     local report=""
 
-    report+="📌 Согласно п. 7.1.1 правил пользования, безлимитное пространство предназначено только для веб-файлов, активной электронной почты и содержимого сайтов.\n"
-    report+="Оно не может использоваться для хранения, раздачи, архивирования данных или как внешнее хранилище.\n"
-    report+="📣 Команде HOSTFLY необходимо определить нарушения и уведомить владельцев.\n\n"
+    report+="📌 Согласно п. 7.1.1 правил пользования, безлимитное пространство предоставляется только для веб-файлов, активной электронной почты и содержимого сайтов.\n"
+    report+="Оно не может использоваться для хранения, раздачи, архивирования данных или как внешнее хранилище (в т.ч. email или FTP).\n"
+    report+="📣 Команде HOSTFLY необходимо определить, имеются ли факты нарушения, и при необходимости уведомить владельцев услуг.\n\n"
     report+="----------------------------------------\n"
 
-    local no_limit_users=()
-    for userfile in /var/cpanel/users/*; do
-        user=$(basename "$userfile")
-        limit=$(grep -i "^QUOTA=" "$userfile" | cut -d= -f2)
-        if [[ -z "$limit" || "$limit" == "0" ]]; then
-            no_limit_users+=("$user")
-        fi
-    done
-
-    for user in "${no_limit_users[@]}"; do
+    for user in $(ls /var/cpanel/users); do
         homedir="/home/$user"
         [ -d "$homedir" ] || continue
 
-        usage_raw=$(quota -svu "$user" 2>/dev/null | awk '$1 ~ /^\/dev/ && $2 ~ /^[0-9]+[KMG]$/ {print $2}' | sort -nr | head -n 1)
+        quota_output=$(quota -svu "$user" 2>/dev/null)
+
+        # Проверяем: все limit = 0K?
+        if echo "$quota_output" | awk '$1 ~ /^\/dev/ && $4 != "0K"' | grep -q .; then
+            continue
+        fi
+
+        # Получаем максимальное использование
+        usage_raw=$(echo "$quota_output" | awk '$1 ~ /^\/dev/ && $2 ~ /^[0-9]+[KMG]$/ {print $2}' | sort -nr | head -n 1)
         usage_unit=$(echo "$usage_raw" | grep -o '[KMG]$')
         usage_value=$(echo "$usage_raw" | grep -o '^[0-9.]\+')
 
@@ -120,19 +119,17 @@ run_audit() {
 run_audit
 EOF
 
-# Подставляем email
+# Подстановка email
 sed -i "s|{{EMAIL}}|$EMAIL|" "$SCRIPT_PATH"
 
 chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE" && chmod 644 "$LOG_FILE"
 
-# Установка cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
 echo "✅ Скрипт установлен: $SCRIPT_PATH"
-echo "📩 Email: $EMAIL"
-echo "📆 Cron: каждый четверг в 04:00"
-echo "▶️ Запуск сразу..."
-
+echo "📩 Email уведомлений: $EMAIL"
+echo "📆 Cron: четверг в 04:00"
+echo "▶️ Запуск первой проверки..."
 "$SCRIPT_PATH"
