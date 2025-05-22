@@ -78,15 +78,14 @@ monitor_databases() {
                  HAVING size_gb > \$THRESHOLD_GB
                  ORDER BY size_gb DESC;"
 
-    result=\$(mysql -u "\$MYSQL_USER" \${MYSQL_PASS:+-p\"\$MYSQL_PASS\"} --socket="\$MYSQL_SOCKET" -N -e "\$query")
+    result=\$(mysql -u "\$MYSQL_USER" \${MYSQL_PASS:+-p\"\$MYSQL_PASS\"} --socket="\$MYSQL_SOCKET" -N --batch --raw -e "\$query")
 
-    while IFS=\$'\\t' read -r db size; do
-        output="\${output}\\n\${size} GB\t\${db}"
+    while IFS=\$'\t' read -r db size; do
+        output="\${output}\n\${size} GB\t\${db}"
     done <<< "\$result"
 
     if [[ -n "\$output" ]]; then
         local message="На сервере \$hostname были обнаружены базы данных, превышающие \$THRESHOLD_GB ГБ:\n\${output}\n\nПросьба установить владельцев данных баз и уведомить их при необходимости."
-
         message=\$(echo -e "\$message")
         echo -e "[ALERT] Обнаружены превышения баз данных:\$output"
         log_message "ALERT" "Обнаружены превышения. Отправка письма."
