@@ -24,7 +24,7 @@ if [[ ! "$EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}$ ]]; then
     exit 1
 fi
 
-# Создание скрипта мониторинга с подстановкой переменных
+# Создание скрипта мониторинга
 cat > "$SCRIPT_PATH" <<EOF
 #!/bin/bash
 
@@ -89,7 +89,7 @@ monitor_databases() {
     fi
 
     if [[ -n "\$output" ]]; then
-        local message="На сервере \$hostname были обнаружены базы данных, превышающие \$THRESHOLD_GB ГБ:\n\${output}\n\nПросьба установить владельцев данных баз и уведомить их при необходимости."
+        local message="На сервере \$hostname были обнаружены базы данных, превышающие \$THRESHOLD_GB ГБ:\n\${output}\n\nСогласно п. 7.1.1 правил пользования, размер одной базы не должен превышать 5 ГБ.\nКоманде hostfly необходимо установить владельцев данных баз и уведомить их о нарушении."
         message=\$(echo -e "\$message")
         echo -e "[ALERT] Обнаружены превышения баз данных:\$output"
         log_message "ALERT" "Обнаружены превышения. Отправка письма."
@@ -108,11 +108,11 @@ chmod +x "$SCRIPT_PATH"
 touch "$LOG_FILE"
 chmod 644 "$LOG_FILE"
 
-# Добавление в cron
+# Обновление cron
 crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" | crontab -
 ( crontab -l 2>/dev/null; echo "$CRON_TIME $SCRIPT_PATH" ) | crontab -
 
-# Запуск
+# Первый запуск
 echo "✅ Скрипт установлен: $SCRIPT_PATH"
 echo "📩 Email уведомлений: $EMAIL"
 echo "🕓 Cron-задача: каждую среду в 16:00"
