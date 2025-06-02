@@ -7,7 +7,7 @@ TARGET_SERVER="10.10.10.14"
 LOG_FILE="migration.log"
 
 # Пауза между миграциями (в секундах)
-MIGRATION_DELAY=30
+MIGRATION_DELAY=2
 
 # Список хостов для миграции
 HOSTS=(
