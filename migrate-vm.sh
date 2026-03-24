@@ -21,7 +21,8 @@ CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 PVE_SSH_PORT=1288
 VMID_MIN=5002
 DRY_RUN=0
-LOG_FILE=""
+AUTO_YES=0
+LOG_FILE="/dev/null"
 
 log()  { echo -e "$(date '+%H:%M:%S') ${BOLD}[INFO]${NC}  $*" | tee -a "$LOG_FILE"; }
 ok()   { echo -e "$(date '+%H:%M:%S') ${GREEN}[OK]${NC}    $*" | tee -a "$LOG_FILE"; }
@@ -58,6 +59,8 @@ VMID_ARG=""
 for arg in "${@:4}"; do
     if [[ "$arg" == "--dry-run" ]]; then
         DRY_RUN=1
+    elif [[ "$arg" == "--yes" || "$arg" == "-y" ]]; then
+        AUTO_YES=1
     else
         VMID_ARG="$arg"
     fi
@@ -86,11 +89,16 @@ log "UUID: $UUID"
 
 VM_INFO=$(prlctl list -i "$UUID" 2>/dev/null) || err "Не удалось получить информацию о VM $UUID"
 
-VM_NAME=$(echo "$VM_INFO" | awk '/^Name:/{print $2}')
-VM_CPU=$(echo "$VM_INFO"  | grep -oP 'cpu_count:\s*\K\d+' | head -1)
-VM_RAM=$(echo "$VM_INFO"  | grep -oP 'ram_size:\s*\K\d+' | head -1)  # в MB
-VM_MAC=$(echo "$VM_INFO"  | grep -oP 'mac=\K[0-9A-Fa-f:]+' | head -1)
+# Отключаем -e на время парсинга (grep выходит с 1 при отсутствии совпадений)
+set +e
+VM_NAME=$(echo "$VM_INFO"   | awk '/^Name:/{print $2}')
+VM_CPU=$(echo "$VM_INFO"    | grep -oP 'cpus=\K\d+'              | head -1)
+VM_RAM=$(echo "$VM_INFO"    | grep -oP 'memory \K\d+'            | head -1)  # в MB
+VM_MAC=$(echo "$VM_INFO"    | grep -oP 'mac=\K[0-9A-Fa-f]+'     | head -1)
 VM_STATUS=$(echo "$VM_INFO" | awk '/^State:/{print $2}')
+VM_IPS=$(echo "$VM_INFO"    | grep -oP "ips='[^']+'" | grep -oP "'[^']+'" | tr -d "'" | tr ' ' '\n' | grep -v '^$' | paste -sd ', ')
+set -e
+SRC_HOST=$(hostname -f 2>/dev/null || hostname)
 
 # Нормализуем MAC (Virtuozzo может выдавать без разделителей)
 if [[ ${#VM_MAC} -eq 12 ]]; then
@@ -98,6 +106,8 @@ if [[ ${#VM_MAC} -eq 12 ]]; then
 fi
 
 [[ -z "$VM_NAME" ]] && err "Не удалось определить имя VM"
+# Proxmox требует DNS-совместимое имя: только a-z0-9 и дефис (не подчёркивание)
+VM_NAME_SAFE=$(echo "$VM_NAME" | tr '_' '-' | tr '[:upper:]' '[:lower:]')
 [[ -z "$VM_CPU"  ]] && VM_CPU=2
 [[ -z "$VM_RAM"  ]] && VM_RAM=2048
 [[ -z "$VM_MAC"  ]] && warn "MAC не определён — будет сгенерирован автоматически"
@@ -160,8 +170,8 @@ echo -e "  CPU/RAM:   $VM_CPU core / ${VM_RAM} MB"
 [[ $DRY_RUN -eq 1 ]] && echo -e "  ${YELLOW}DRY-RUN: реальных изменений не будет${NC}"
 echo ""
 
-if [[ $DRY_RUN -eq 0 ]]; then
-    read -rp "Продолжить? [y/N] " CONFIRM
+if [[ $DRY_RUN -eq 0 && $AUTO_YES -eq 0 ]]; then
+    read -rp "Продолжить? [y/N] " CONFIRM </dev/tty
     [[ "$CONFIRM" =~ ^[Yy]$ ]] || { log "Отменено пользователем"; exit 0; }
 fi
 
@@ -222,14 +232,15 @@ MAC_PARAM=""
 [[ -n "$VM_MAC" ]] && MAC_PARAM=",macaddr=$VM_MAC"
 
 run_pve "qm create $VMID \
-    --name $VM_NAME \
+    --name $VM_NAME_SAFE \
     --cores $VM_CPU \
     --sockets 1 \
     --memory $VM_RAM \
     --net0 virtio,bridge=vmbr0${MAC_PARAM} \
     --ostype l26 \
     --scsihw virtio-scsi-single \
-    --agent enabled=1"
+    --agent enabled=1 \
+    --numa 1"
 
 ok "VM $VMID создана"
 
@@ -242,6 +253,14 @@ run_pve "qm set $VMID --ide2 ${STORAGE}:cloudinit"
 run_pve "qm set $VMID --boot order=scsi0"
 run_pve "qm set $VMID --hotplug disk,network,usb,memory,cpu"
 run_pve "rm -f $REMOTE_RAW"
+
+# --- Заметка о происхождении VM ---
+UUID_CLEAN="${UUID//[\{\}]/}"
+MIGRATE_DATE=$(date '+%Y-%m-%d %H:%M %Z')
+MIGRATE_NOTE=$(printf 'Migrated from Virtuozzo\n\nSource node: %s\n\nOriginal name: %s\n\nUUID: %s\n\nIPs: %s\n\nDate: %s' \
+    "$SRC_HOST" "$VM_NAME" "$UUID_CLEAN" "${VM_IPS:-unknown}" "$MIGRATE_DATE")
+NOTE_B64=$(printf '%s' "$MIGRATE_NOTE" | base64 -w 0)
+run_pve "qm set $VMID --description \"\$(echo '$NOTE_B64' | base64 -d)\""
 
 ok "Диск импортирован и подключён"
 
